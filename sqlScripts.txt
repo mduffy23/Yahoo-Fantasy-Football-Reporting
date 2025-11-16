@@ -1,0 +1,62 @@
+Create View SeasonalPoints As
+SELECT Season, Player_name, Player_id, Round(Sum(points)::numeric, 4) as Points
+FROM public.roster
+Group By Season, Player_name, Player_id
+;
+
+CREATE VIEW MatchupHistory AS
+Select Season, Week, Playoffs, WinningManager, WinningPoints, LosingManager, LosingPoints, Min(PointDifferential) as PointDiff From (
+SELECT to_char(w.week_start, 'YYYY') as Season, w.week, w.is_playoff as Playoffs, w.team_name as WinningTeam, wm.propername as WinningManager, w.points as WinningPoints, l.team_name as LosingTeam, wl.propername as LosingManager, l.points as LosingPoints, 
+(ROUND((w.points - l.points)::numeric, 3)) as PointDifferential
+FROM public.matchups W Left Join public.manager_map wm on w.manager_nickname = wm.manager_nickname
+Left Join public.matchups L On W.week = L.Week And W.Week_start = L.Week_Start and W.Week_end = L.Week_end and W.matchup_id = L.matchup_id and L.Winner = 'false'
+Left Join public.manager_map wl on l.manager_nickname = wl.manager_nickname
+Where W.Winner = 'true'
+)
+group By Season, Week, Playoffs, WinningManager, WinningPoints, LosingManager, LosingPoints
+Order By PointDiff Desc
+
+CREATE VIEW vw_CurrentMatchup AS
+Select Season, Week, Playoffs, ProjectedWinningManager, WinningProjPoints, ProjectedLosingManager, LosingProjPoints, Min(PointDifferential) as PointDiff 
+From (
+SELECT to_char(w.week_start, 'YYYY') as Season, w.week, w.is_playoff as Playoffs, w.team_name as WinningTeam, wm.propername as ProjectedWinningManager, w.projected_points as WinningProjPoints, l.team_name as LosingTeam, wl.propername as ProjectedLosingManager, l.projected_points as LosingProjPoints, 
+(ROUND((w.projected_points - l.projected_points)::numeric, 3)) as PointDifferential
+FROM public.currentmatchup W Left Join public.manager_map wm on w.manager_nickname = wm.manager_nickname
+Left Join public.currentmatchup L On W.week = L.Week And W.Week_start = L.Week_Start and W.Week_end = L.Week_end and W.matchup_id = L.matchup_id and W.manager_id != L.manager_id
+Left Join public.manager_map wl on l.manager_nickname = wl.manager_nickname
+Where (ROUND((w.projected_points - l.projected_points)::numeric, 3)) > 0
+)
+group By Season, Week, Playoffs, ProjectedWinningManager, WinningProjPoints, ProjectedLosingManager, LosingProjPoints
+Order By PointDiff Desc
+;
+
+Create View StraightRecord As
+Select winningmanager As WinningManager, losingmanager as LosingManager, Count(pointdiff) as Games
+From matchuphistory
+Group By winningmanager, losingmanager
+;
+
+Create View LifeTimeRecord as 
+Select W.winningmanager, W.losingmanager, COALESCE(W.Games, 0) as Wins, COALESCE(L.Games, 0) as Losses 
+From StraightRecord W
+Left Join StraightRecord L On w.winningmanager = l.losingmanager and w.losingmanager = l.winningmanager
+Order By w.winningmanager
+;
+
+--Weekly Report
+Select S.*, 
+HS.Season as Season_S, HS.Week as Week_S, HS.winningmanager as WinningManager_S, HS.winningpoints as WinningPoints_S,   
+HS.losingmanager as LosingManager_S, HS.Losingpoints as LosingPoints_S,
+HL.Season as Season_L, HL.Week as Week_L, HL.winningmanager as WinningManager_L, HL.winningpoints as WinningPoints_L,   
+HL.losingmanager as LosingManager_L, HL.Losingpoints as LosingPoints_L
+From (
+Select M.Season, M.Week, M.projectedwinningmanager, M.projectedlosingmanager, COALESCE(R.Wins, RFallBack.Losses, 0) as LifetimeWins, COALESCE(R.Losses, RFallBack.Wins, 0) as LifetimeLosses, COALESCE(Min(H.pointdiff), 0) as SmallestPointDifferential, COALESCE(Max(H.pointdiff), 0) as LargestPointDifferential
+from vw_currentmatchup M
+Left Join lifetimerecord R On M.projectedwinningmanager = R.winningmanager and M.projectedlosingmanager = R.losingmanager
+Left Join lifetimerecord RFallBack On M.projectedwinningmanager = RFallBack.losingmanager and M.projectedlosingmanager = RFallBack.winningmanager 
+Left Join matchuphistory H On (M.projectedwinningmanager = H.winningmanager or M.projectedwinningmanager = H.losingmanager) and (M.projectedlosingmanager = H.losingmanager or M.projectedlosingmanager = H.winningmanager)
+Group By M.Season, M.Week, M.projectedwinningmanager, M.projectedlosingmanager, COALESCE(R.Wins, RFallBack.Losses, 0), COALESCE(R.Losses, RFallBack.Wins, 0)
+) S
+Left Join matchuphistory HL On S.LargestPointDifferential = HL.pointdiff and (S.projectedwinningmanager = HL.winningmanager or S.projectedwinningmanager = HL.losingmanager) and (S.projectedlosingmanager = HL.losingmanager or s.projectedlosingmanager = HL.winningmanager)
+Left Join matchuphistory HS On S.SmallestPointDifferential = HS.pointdiff and (S.projectedwinningmanager = HS.winningmanager or S.projectedwinningmanager = HS.losingmanager) and (S.projectedlosingmanager = HS.losingmanager or s.projectedlosingmanager = HS.winningmanager)
+;
