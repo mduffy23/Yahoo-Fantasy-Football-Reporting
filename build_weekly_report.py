@@ -1,5 +1,5 @@
 """
-build_site.py - run the report queries and write a static site into ./site
+build_weekly_report.py - run the report queries and write a static site into ./site
 
 Pages written:
     site/index.html    matchup history for the current week
@@ -7,7 +7,7 @@ Pages written:
 
 Usage:
     export DATABASE_URL="postgresql://user:pass@host:5432/postgres"
-    python build_site.py
+    python build_weekly_report.py
 
 Requires: pandas, sqlalchemy, psycopg2-binary
 """
