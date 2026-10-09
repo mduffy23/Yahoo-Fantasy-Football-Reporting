@@ -285,8 +285,7 @@ def whole(n):
 
 
 def main():
-    env = 'postgresql://postgres.dpppfgttgcuwwfocduft:4G5JkU4Vj%4023@aws-0-us-east-1.pooler.supabase.com:5432/postgres'
-    engine = create_engine(env)
+    engine = create_engine(os.environ["DATABASE_URL"])
     with engine.connect() as conn:
         matchups = fetch_matchups(conn)
         parlays = fetch_parlays(conn)
