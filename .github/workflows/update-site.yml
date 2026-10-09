@@ -35,7 +35,7 @@ jobs:
       #    YAHOO_CLIENT_SECRET: ${{ secrets.YAHOO_CLIENT_SECRET }}
 
       - name: Build site
-        run: python build_site.py
+        run: python build_weekly_report.py
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
