@@ -1,0 +1,13 @@
+name: mercy_fantasy
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pandas
+  - sqlalchemy
+  - psycopg2         # postgres driver used by the sqlalchemy engine string
+  - ipykernel         # lets Jupyter see this env as a kernel
+  - pip
+  - pip:
+      - yahoo_fantasy_api
+      - yahoo_oauth
