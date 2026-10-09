@@ -285,7 +285,14 @@ def whole(n):
 
 
 def main():
-    engine = create_engine(os.environ["DATABASE_URL"])
+    database_url = os.environ["DATABASE_URL"]
+    # SQLAlchemy 2.1 defaults postgresql:// to psycopg (v3), while this
+    # project installs psycopg2-binary. Select that driver explicitly.
+    if database_url.startswith("postgres://"):
+        database_url = "postgresql+psycopg2://" + database_url[len("postgres://"):]
+    elif database_url.startswith("postgresql://"):
+        database_url = "postgresql+psycopg2://" + database_url[len("postgresql://"):]
+    engine = create_engine(database_url)
     with engine.connect() as conn:
         matchups = fetch_matchups(conn)
         parlays = fetch_parlays(conn)
