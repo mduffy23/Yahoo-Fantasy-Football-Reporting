@@ -49,6 +49,13 @@ Group By manager
 Order By parlay_hits desc
 ''')
 
+PARLAY_BETS_SQL = text('''
+Select season, week, manager, bet, hit
+From transactions.parlays
+Where season = (Select season from vw_current_season)
+Order By week, manager
+''')
+
 
 def to_records(df):
     # to_json turns NaN into null, which is what the pages check for.
@@ -63,7 +70,14 @@ def fetch_matchups(conn):
 
 
 def fetch_parlays(conn):
-    return to_records(pd.read_sql(PARLAY_SQL, con=conn))
+    parlays = to_records(pd.read_sql(PARLAY_SQL, con=conn))
+    bets = to_records(pd.read_sql(PARLAY_BETS_SQL, con=conn))
+    by_manager = {}
+    for b in bets:
+        by_manager.setdefault(b["manager"], []).append(b)
+    for p in parlays:
+        p["bets"] = by_manager.get(p["manager"], [])
+    return parlays
 
 
 # ---------------------------------------------------------------- page shell
@@ -122,6 +136,16 @@ nav a[aria-current] { color: var(--ink); border-bottom-color: var(--turf); }
 .prow .name { font-size: clamp(26px, 5vw, 34px); }
 .track { margin: 8px 0 6px; }
 .prow p { margin: 0; font-size: 15px; color: var(--muted); }
+.bets { margin-top: 12px; }
+.bets summary { cursor: pointer; font-weight: 500; font-size: 15px; color: var(--turf); }
+.bets summary:hover { color: var(--ink); }
+.betlist { list-style: none; margin: 10px 0 0; padding: 0; border-top: 1px solid var(--rule); }
+.betlist li { display: grid; grid-template-columns: 52px 1fr auto; gap: 12px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--rule); font-size: 15px; }
+.betlist .wk { color: var(--muted); }
+.betlist .bet { overflow-wrap: anywhere; }
+.res { font-weight: 500; }
+.res.hit { color: var(--turf); }
+.res.miss, .res.pending { color: var(--muted); }
 footer { margin-top: 24px; color: var(--muted); font-size: 14px; }
 @media (max-width: 560px) {
   .teams { grid-template-columns: 1fr; gap: 4px; }
@@ -248,6 +272,25 @@ if (rows.length === 0) {
       ? "No settled parlays"
       : plural(h, "hit", "hits") + ", " + plural(m, "miss", "misses") + " (" + Math.round(100 * h / total) + "% hit rate)";
     who.append(track, $("p", null, summary));
+
+    const bets = r.bets || [];
+    if (bets.length > 0) {
+      const d = $("details", "bets");
+      d.append($("summary", null, "This season's parlays (" + bets.length + ")"));
+      const list = $("ul", "betlist");
+      bets.forEach(b => {
+        const res = b.hit === "Y" ? "hit" : b.hit === "N" ? "miss" : "pending";
+        const li = $("li");
+        li.append(
+          $("span", "wk", b.week == null ? "" : "Wk " + b.week),
+          $("span", "bet", b.bet),
+          $("span", "res " + res, res === "hit" ? "Hit" : res === "miss" ? "Miss" : "Pending")
+        );
+        list.append(li);
+      });
+      d.append(list);
+      who.append(d);
+    }
 
     row.append($("div", "rank", rank), who);
     app.append(row);
