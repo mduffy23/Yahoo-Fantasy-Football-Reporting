@@ -39,6 +39,12 @@ Left Join matchuphistory HL On S.LargestPointDifferential = HL.pointdiff and (S.
 Left Join matchuphistory HS On S.SmallestPointDifferential = HS.pointdiff and (S.projectedwinningmanager = HS.winningmanager or S.projectedwinningmanager = HS.losingmanager) and (S.projectedlosingmanager = HS.losingmanager or s.projectedlosingmanager = HS.winningmanager)
 ''')
 
+HISTORY_SQL = text('''
+Select season, week, winningmanager, winningpoints, losingmanager, losingpoints, pointdiff
+From matchuphistory
+Order By season, week
+''')
+
 PARLAY_SQL = text('''
 Select manager,
 sum(case when hit = 'Y' then 1 else 0 end) as parlay_hits,
@@ -66,7 +72,16 @@ def fetch_matchups(conn):
     df = pd.read_sql(MATCHUP_SQL, con=conn)
     # Two past games with the same point differential would duplicate a matchup.
     df = df.drop_duplicates(subset=["projectedwinningmanager", "projectedlosingmanager"])
-    return to_records(df)
+    matchups = to_records(df)
+    history = to_records(pd.read_sql(HISTORY_SQL, con=conn))
+    by_pair = {}
+    for g in history:
+        pair = frozenset((g["winningmanager"], g["losingmanager"]))
+        by_pair.setdefault(pair, []).append(g)
+    for m in matchups:
+        pair = frozenset((m["projectedwinningmanager"], m["projectedlosingmanager"]))
+        m["games"] = by_pair.get(pair, [])
+    return matchups
 
 
 def fetch_parlays(conn):
@@ -143,6 +158,7 @@ nav a[aria-current] { color: var(--ink); border-bottom-color: var(--turf); }
 .betlist li { display: grid; grid-template-columns: 52px 1fr auto; gap: 12px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--rule); font-size: 15px; }
 .betlist .wk { color: var(--muted); }
 .betlist .bet { overflow-wrap: anywhere; }
+.betlist.games li { grid-template-columns: 110px 1fr auto; }
 .res { font-weight: 500; }
 .res.hit { color: var(--turf); }
 .res.miss, .res.pending { color: var(--muted); }
@@ -232,6 +248,24 @@ function matchup(m) {
          m.winningpoints_l, m.losingpoints_l, m.week_l, m.season_l)
   );
   el.append(ledger);
+
+  const games = m.games || [];
+  if (games.length > 0) {
+    const d = $("details", "bets");
+    d.append($("summary", null, "All meetings (" + games.length + ")"));
+    const list = $("ul", "betlist games");
+    games.forEach(g => {
+      const li = $("li");
+      li.append(
+        $("span", "wk", g.season + " Wk " + g.week),
+        $("span", "bet", g.winningmanager + " beat " + g.losingmanager + " " + pts(g.winningpoints) + " to " + pts(g.losingpoints)),
+        $("span", "res", pts(g.pointdiff))
+      );
+      list.append(li);
+    });
+    d.append(list);
+    el.append(d);
+  }
   return el;
 }
 
