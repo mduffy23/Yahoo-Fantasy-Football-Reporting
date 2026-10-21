@@ -438,7 +438,9 @@ def yahoo_transaction_rows(league, season, league_key):
             trades.append({
                 "season": season, "league_id": league_key,
                 "trade_id": int(transaction["transaction_id"]),
-                "timestamp": int(transaction["timestamp"]),
+                "timestamp": datetime.fromtimestamp(
+                    int(transaction["timestamp"]), timezone.utc
+                ).replace(tzinfo=None),
                 "status": transaction.get("status"),
                 "from_team": details.get("source_team_name"),
                 "from_team_key": details.get("source_team_key"),
