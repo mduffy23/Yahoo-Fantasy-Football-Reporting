@@ -484,18 +484,13 @@ waiver_columns = [
     "team_key", "player", "player_id", "pos", "team_abbr",
 ]
 
-def replace_transaction_rows(conn, table, rows, columns, keys):
+def insert_transaction_rows(conn, table, rows, columns):
     if not rows:
         return
     values = ", ".join(f":{column}" for column in columns)
     column_names = ", ".join(columns)
-    conflict_keys = ", ".join(keys)
-    updates = ", ".join(
-        f"{column} = EXCLUDED.{column}" for column in columns if column not in keys
-    )
     query = text(
         f"INSERT INTO transactions.{table} ({column_names}) VALUES ({values}) "
-        f"ON CONFLICT ({conflict_keys}) DO UPDATE SET {updates}"
     )
     conn.execute(query, rows)
 
@@ -509,9 +504,5 @@ with engine.begin() as conn:
         text("DELETE FROM transactions.waivers WHERE season = :season AND league_id = :league"),
         params,
     )
-    replace_transaction_rows(
-        conn, "trades", trade_rows, trade_columns, ["league_id", "trade_id", "player_id"]
-    )
-    replace_transaction_rows(
-        conn, "waivers", waiver_rows, waiver_columns, ["league_id", "trade_id", "player_id"]
-    )
+    insert_transaction_rows(conn, "trades", trade_rows, trade_columns)
+    insert_transaction_rows(conn, "waivers", waiver_rows, waiver_columns)
