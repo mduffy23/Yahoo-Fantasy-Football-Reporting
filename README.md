@@ -29,5 +29,14 @@ pip install -r requirements.txt
 python -m ipykernel install --user --name mercy_fantasy --display-name "mercy_fantasy"
 ```
 
+## GitHub Actions secrets
+The scheduled workflow runs both ingestion and site generation. Configure these repository secrets:
+
+- `DATABASE_URL`: PostgreSQL/Supabase connection URL.
+- `YAHOO_OAUTH_JSON`: the complete contents of the Yahoo `oauth2.json` token file.
+- `GOOGLE_SERVICE_ACCOUNT_JSON`: the complete service account JSON used to read the parlay spreadsheet. Share the spreadsheet with that service account.
+
+The workflow passes the credential JSON through environment variables, so it does not need credential files committed to the repository. `YAHOO_CLIENT_ID` and `YAHOO_CLIENT_SECRET` are not used by the current token-file flow.
+
 ## One thing worth flagging
 Cell 4 has the Postgres username/password hardcoded in plain text in the notebook. That's not an environment issue, but since you're about to share/copy this — worth pulling that into an environment variable or a `.env` file (e.g. via `python-dotenv`) before this notebook goes anywhere else. Happy to do that refactor if you want.

@@ -95,6 +95,30 @@ def fetch_parlays(conn):
     return parlays
 
 
+def fetch_last_place(conn):
+    """Return the lowest scoring manager from the latest completed week."""
+    sql = text("""
+        WITH current_week AS (
+            SELECT season, week
+            FROM manager_info.currentmatchup
+            ORDER BY season DESC, week DESC
+            LIMIT 1
+        ), latest_complete AS (
+            SELECT m.season, m.week
+            FROM manager_info.matchups m, current_week c
+            WHERE (m.season, m.week) < (c.season, c.week)
+            GROUP BY m.season, m.week
+            ORDER BY m.season DESC, m.week DESC
+            LIMIT 1
+        )
+        SELECT m.season, m.week, m.manager_nickname, m.team_name, m.points
+        FROM manager_info.matchups m
+        JOIN latest_complete w USING (season, week)
+        ORDER BY m.points ASC, m.manager_nickname
+    """)
+    return to_records(pd.read_sql(sql, con=conn))
+
+
 # ---------------------------------------------------------------- page shell
 
 TEMPLATE = """<!doctype html>
@@ -128,6 +152,9 @@ nav a { color: var(--muted); text-decoration: none; padding-bottom: 2px; border-
 nav a:hover { color: var(--ink); }
 nav a[aria-current] { color: var(--ink); border-bottom-color: var(--turf); }
 .matchup { padding: 32px 0; border-bottom: 1px solid var(--rule); }
+.last-place { margin: 24px 0 4px; padding: 18px 20px; border-left: 5px solid var(--gold); background: color-mix(in srgb, var(--gold) 12%, var(--paper)); }
+.last-place h2 { margin: 0 0 4px; font: 700 28px/1.1 var(--display); }
+.last-place p { margin: 4px 0; }
 .teams { display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; align-items: baseline; }
 .name { font: 700 clamp(28px, 6vw, 40px)/1.05 var(--display); overflow-wrap: anywhere; }
 .teams .b { text-align: right; }
@@ -191,6 +218,15 @@ const $ = (tag, cls, txt) => {
 const pts = n => String(Number(Number(n).toFixed(2)));
 const plural = (n, one, many) => n + " " + (n === 1 ? one : many);
 const app = document.getElementById("app");
+if (D.last_place && D.last_place.length > 0) {
+  const week = D.last_place[0].week, season = D.last_place[0].season;
+  const card = $("section", "last-place");
+  card.append($("h2", null, "Last place: Week " + week + " (" + season + ")"));
+  card.append($("p", null, "Responsible for next week's parlay"));
+  D.last_place.forEach(r => card.append($("p", null,
+    r.manager_nickname + " — " + pts(r.points) + " points" + (r.team_name ? " (" + r.team_name + ")" : ""))));
+  app.append(card);
+}
 __SCRIPT__
 </script>
 </body>
@@ -373,6 +409,7 @@ def main():
     with engine.connect() as conn:
         matchups = fetch_matchups(conn)
         parlays = fetch_parlays(conn)
+        last_place = fetch_last_place(conn)
 
     season = whole(matchups[0]["season"]) if matchups else None
     week = whole(matchups[0]["week"]) if matchups else None
@@ -389,7 +426,7 @@ def main():
             "Fantasy football matchups with head-to-head history: all-time series, closest finish, and biggest blowout.",
             f"{season_label}: head-to-head history for every matchup",
             MATCHUPS_JS,
-            {"matchups": matchups},
+            {"matchups": matchups, "last_place": last_place},
             updated,
         ),
         encoding="utf-8",

@@ -27,12 +27,14 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      #- name: Ingest from Yahoo into Supabase
-      #  run: python ingest.py
-      #  env:
-      #    DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      #    YAHOO_CLIENT_ID: ${{ secrets.YAHOO_CLIENT_ID }}
-      #    YAHOO_CLIENT_SECRET: ${{ secrets.YAHOO_CLIENT_SECRET }}
+      - name: Ingest from Yahoo into Supabase
+        run: python ingest.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          YAHOO_CLIENT_ID: ${{ secrets.YAHOO_CLIENT_ID }}
+          YAHOO_CLIENT_SECRET: ${{ secrets.YAHOO_CLIENT_SECRET }}
+          YAHOO_OAUTH_JSON: ${{ secrets.YAHOO_OAUTH_JSON }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
 
       - name: Build site
         run: python build_weekly_report.py

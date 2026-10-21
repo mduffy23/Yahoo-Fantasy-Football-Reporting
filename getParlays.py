@@ -1,6 +1,8 @@
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
+import json
+import os
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets.readonly",
@@ -10,9 +12,17 @@ SCOPES = [
 SERVICE_ACCOUNT_FILE = "sheet_service.json"
 
 def get_parlays(sheet_name):
-    creds = Credentials.from_service_account_file(
-        SERVICE_ACCOUNT_FILE, scopes=SCOPES
-    )
+    service_account_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
+    if service_account_json:
+        creds = Credentials.from_service_account_info(
+            json.loads(service_account_json), scopes=SCOPES
+        )
+    else:
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            raise RuntimeError("Set the GOOGLE_SERVICE_ACCOUNT_JSON GitHub Actions secret")
+        creds = Credentials.from_service_account_file(
+            SERVICE_ACCOUNT_FILE, scopes=SCOPES
+        )
 
     client = gspread.authorize(creds)
 
