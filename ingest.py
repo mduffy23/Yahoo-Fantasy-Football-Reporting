@@ -174,9 +174,9 @@ for key, value in matchup['0']['matchups'].items():
 
                 manager_id = manager_info.get('manager_id') if manager_info else None
                 nickname = manager_info.get('nickname') if manager_info else None
-            guid = manager_info.get('guid') if manager_info else None
-            if guid == '--hidden--':
-                guid = team_key
+                guid = manager_info.get('guid') if manager_info else None
+                if guid == '--hidden--':
+                    guid = team_key
 
                 if previousWeek == 1:
                     num_moves, num_trades = None, None

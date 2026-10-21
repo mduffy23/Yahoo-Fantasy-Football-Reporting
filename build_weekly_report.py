@@ -4,6 +4,7 @@ build_weekly_report.py - run the report queries and write a static site into ./s
 Pages written:
     site/index.html    matchup history for the current week
     site/parlays.html  parlay hits and misses for the current season
+    site/scores.html   all scores from the latest completed week
 
 Usage:
     export DATABASE_URL="postgresql://user:pass@host:5432/postgres"
@@ -95,8 +96,8 @@ def fetch_parlays(conn):
     return parlays
 
 
-def fetch_last_place(conn):
-    """Return the lowest scoring manager from the latest completed week."""
+def fetch_weekly_scores(conn):
+    """Return every manager's score from the latest completed week."""
     sql = text("""
         WITH current_week AS (
             SELECT season, week
@@ -114,7 +115,7 @@ def fetch_last_place(conn):
         SELECT m.season, m.week, m.manager_nickname, m.team_name, m.points
         FROM manager_info.matchups m
         JOIN latest_complete w USING (season, week)
-        ORDER BY m.points ASC, m.manager_nickname
+        ORDER BY m.points DESC, m.manager_nickname
     """)
     return to_records(pd.read_sql(sql, con=conn))
 
@@ -152,9 +153,16 @@ nav a { color: var(--muted); text-decoration: none; padding-bottom: 2px; border-
 nav a:hover { color: var(--ink); }
 nav a[aria-current] { color: var(--ink); border-bottom-color: var(--turf); }
 .matchup { padding: 32px 0; border-bottom: 1px solid var(--rule); }
-.last-place { margin: 24px 0 4px; padding: 18px 20px; border-left: 5px solid var(--gold); background: color-mix(in srgb, var(--gold) 12%, var(--paper)); }
-.last-place h2 { margin: 0 0 4px; font: 700 28px/1.1 var(--display); }
-.last-place p { margin: 4px 0; }
+.score-callout { margin: 24px 0; padding: 18px 20px; border-left: 5px solid var(--gold); background: color-mix(in srgb, var(--gold) 12%, var(--paper)); }
+.score-callout h2 { margin: 0 0 4px; font: 700 28px/1.1 var(--display); }
+.score-callout p { margin: 4px 0; }
+.score-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+.score-table th, .score-table td { padding: 12px 10px; text-align: left; border-bottom: 1px solid var(--rule); }
+.score-table th { color: var(--muted); font-size: 14px; font-weight: 500; }
+.score-table .points { text-align: right; font-variant-numeric: tabular-nums; }
+.score-table .lowest { background: color-mix(in srgb, var(--gold) 12%, var(--paper)); font-weight: 500; }
+.score-table .lowest .points { color: var(--turf); }
+.score-badge { display: inline-block; margin-left: 8px; color: var(--turf); font-size: 13px; font-weight: 500; }
 .teams { display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; align-items: baseline; }
 .name { font: 700 clamp(28px, 6vw, 40px)/1.05 var(--display); overflow-wrap: anywhere; }
 .teams .b { text-align: right; }
@@ -218,15 +226,6 @@ const $ = (tag, cls, txt) => {
 const pts = n => String(Number(Number(n).toFixed(2)));
 const plural = (n, one, many) => n + " " + (n === 1 ? one : many);
 const app = document.getElementById("app");
-if (D.last_place && D.last_place.length > 0) {
-  const week = D.last_place[0].week, season = D.last_place[0].season;
-  const card = $("section", "last-place");
-  card.append($("h2", null, "Last place: Week " + week + " (" + season + ")"));
-  card.append($("p", null, "Responsible for next week's parlay"));
-  D.last_place.forEach(r => card.append($("p", null,
-    r.manager_nickname + " — " + pts(r.points) + " points" + (r.team_name ? " (" + r.team_name + ")" : ""))));
-  app.append(card);
-}
 __SCRIPT__
 </script>
 </body>
@@ -368,7 +367,48 @@ if (rows.length === 0) {
 }
 """
 
-PAGES = [("index.html", "Matchups"), ("parlays.html", "Parlays")]
+SCORES_JS = """
+const rows = D.scores;
+if (rows.length === 0) {
+  app.append($("p", "empty", "No completed weekly scores are available yet."));
+} else {
+  const week = rows[0].week, season = rows[0].season;
+  const lowest = Math.min(...rows.map(r => Number(r.points)));
+  const lastPlace = rows.filter(r => Number(r.points) === lowest);
+  const callout = $("section", "score-callout");
+  callout.append($("h2", null, "Last place — Week " + week + " (" + season + ")"));
+  callout.append($("p", null, "Responsible for next week's parlay"));
+  lastPlace.forEach(r => callout.append($("p", null,
+    r.manager_nickname + " — " + pts(r.points) + " points")));
+  app.append(callout);
+
+  const table = $("table", "score-table");
+  const head = $("thead"), header = $("tr");
+  ["Manager", "Team", "Points"].forEach((label, index) => {
+    const th = $("th", index === 2 ? "points" : null, label);
+    th.scope = "col";
+    header.append(th);
+  });
+  head.append(header);
+  const body = $("tbody");
+  rows.forEach(r => {
+    const isLast = Number(r.points) === lowest;
+    const row = $("tr", isLast ? "lowest" : null);
+    const score = $("td", "points", pts(r.points));
+    if (isLast) score.append($("span", "score-badge", "Responsible for next week's parlay"));
+    row.append(
+      $("td", null, r.manager_nickname || "Unknown manager"),
+      $("td", null, r.team_name || ""),
+      score
+    );
+    body.append(row);
+  });
+  table.append(head, body);
+  app.append(table);
+}
+"""
+
+PAGES = [("index.html", "Matchups"), ("scores.html", "Weekly Scores"), ("parlays.html", "Parlays")]
 
 
 def nav(active):
@@ -409,10 +449,12 @@ def main():
     with engine.connect() as conn:
         matchups = fetch_matchups(conn)
         parlays = fetch_parlays(conn)
-        last_place = fetch_last_place(conn)
+        weekly_scores = fetch_weekly_scores(conn)
 
     season = whole(matchups[0]["season"]) if matchups else None
     week = whole(matchups[0]["week"]) if matchups else None
+    score_week = whole(weekly_scores[0]["week"]) if weekly_scores else None
+    score_season = whole(weekly_scores[0]["season"]) if weekly_scores else season
     updated = datetime.now(timezone.utc).strftime("%b %d, %Y")
     season_label = f"{season} season" if season else "This season"
 
@@ -426,7 +468,19 @@ def main():
             "Fantasy football matchups with head-to-head history: all-time series, closest finish, and biggest blowout.",
             f"{season_label}: head-to-head history for every matchup",
             MATCHUPS_JS,
-            {"matchups": matchups, "last_place": last_place},
+            {"matchups": matchups},
+            updated,
+        ),
+        encoding="utf-8",
+    )
+    (out / "scores.html").write_text(
+        render(
+            "scores.html",
+            f"{LEAGUE} - Week {score_week} Scores" if score_week else f"{LEAGUE} - Weekly Scores",
+            "Every manager's score from the latest completed fantasy football week, with last place responsible for next week's parlay.",
+            f"{score_season} season: Week {score_week} scores" if score_week else "Scores from the latest completed week",
+            SCORES_JS,
+            {"scores": weekly_scores},
             updated,
         ),
         encoding="utf-8",
@@ -443,7 +497,7 @@ def main():
         ),
         encoding="utf-8",
     )
-    print(f"Wrote site/index.html ({len(matchups)} matchups) and site/parlays.html ({len(parlays)} managers)")
+    print(f"Wrote site/index.html ({len(matchups)} matchups), site/scores.html ({len(weekly_scores)} scores), and site/parlays.html ({len(parlays)} managers)")
 
 
 if __name__ == "__main__":
